@@ -364,7 +364,7 @@ class TelegramCommenterGUI:
     def change_settings_dialog(self):
         dialog = tk.Toplevel(self.root)
         dialog.title("Змінити налаштування")
-        dialog.geometry("700x500")
+        dialog.geometry("800x700")
         dialog.transient(self.root)
         dialog.grab_set()
         
@@ -418,7 +418,17 @@ class TelegramCommenterGUI:
         max_comments_entry = ttk.Entry(activity_frame, width=10)
         max_comments_entry.insert(0, settings.get('max_comments_per_post', 8))
         max_comments_entry.pack(pady=5)
-        
+
+        ttk.Label(activity_frame, text=f"Ймовірність стікера (0-1): {settings.get('sticker_probability', 0.1)}").pack(pady=5)
+        sticker_prob_entry = ttk.Entry(activity_frame, width=10)
+        sticker_prob_entry.insert(0, settings.get('sticker_probability', 0.1))
+        sticker_prob_entry.pack(pady=5) 
+
+        ttk.Label(activity_frame, text=f"Ймовірність емодзі замість тексту (0-1): {self.commenter.config.get('emoji_message_settings', {}).get('probability', 0.2)}").pack(pady=5)
+        emoji_message_prob_entry = ttk.Entry(activity_frame, width=10)
+        emoji_message_prob_entry.insert(0, self.commenter.config.get('emoji_message_settings', {}).get('probability', 0.2))
+        emoji_message_prob_entry.pack(pady=5)    
+
         def submit():
             try:
                 min_delay = int(min_delay_entry.get() or settings['min_delay'])
@@ -432,7 +442,8 @@ class TelegramCommenterGUI:
                 silent_prob = float(silent_prob_entry.get() or settings.get('silent_activity_probability', 0.2))
                 min_comments = int(min_comments_entry.get() or settings.get('min_comments_per_post', 3))
                 max_comments = int(max_comments_entry.get() or settings.get('max_comments_per_post', 8))
-                
+                sticker_prob = float(sticker_prob_entry.get() or settings.get('sticker_probability', 0.1))
+                settings['sticker_probability'] = sticker_prob
                 if min_comments > max_comments:
                     raise ValueError("Мінімум коментарів не може перевищувати максимум")
                 
@@ -444,6 +455,10 @@ class TelegramCommenterGUI:
                 settings['silent_activity_probability'] = silent_prob
                 settings['min_comments_per_post'] = min_comments
                 settings['max_comments_per_post'] = max_comments
+                emoji_message_prob = float(emoji_message_prob_entry.get() or self.commenter.config.get('emoji_message_settings', {}).get('probability', 0.2))
+                if 'emoji_message_settings' not in self.commenter.config:
+                    self.commenter.config['emoji_message_settings'] = {'enabled': True, 'probability': 0.2}
+                self.commenter.config['emoji_message_settings']['probability'] = emoji_message_prob
                 
                 self.commenter.save_config()
                 self.show_message("Успіх", "✅ Налаштування збережено")
