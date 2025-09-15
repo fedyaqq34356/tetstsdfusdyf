@@ -18,7 +18,7 @@ from telethon.tl.functions.messages import SendReactionRequest, GetDiscussionMes
 from telethon.tl.types import ReactionEmoji
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)    
 
 class TelegramCommenter:
     def __init__(self, config_file: str = "config.json"):
@@ -33,17 +33,11 @@ class TelegramCommenter:
 
     def load_config(self) -> dict:
         STANDARD_STICKERS = [
-            "CAACAgIAAxkBAAECYlBhvkxeAAGqrFgAAc9wAwABr2oWyZwAAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYlJhvkxgAAHJg0cAAYQBgAACgp2TGwABHgACDAEAAladvQpZmaIB6S-q5SAE",
-            "CAACAgIAAxkBAAECYlRhvkxiAAGFBwABNAABrE8AAc7WA4oAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYlZhvkxkAAF2BgABQQABcAACgZ_AAIUAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYlhhvkxmAAGsAAH-AAGA_wACEwACv0qBAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYlphvkxoAAHZBwABtgABBAAC5t-qD8gAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYlxhvkxqAAFmAwAB6wABQgACjU1NBAAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYl5hvkxsAAFCBwABYAABcAACEbUAAYkAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYmBhvkxuAAFmAwABeAABwAACs8ADAAUAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-            "CAACAgIAAxkBAAECYmJhvkxwAAGtBAABYwABqgACOgABF7oAAR4AAgwBAAJWnb0KWZmiAAHpL6rlIAQ",
-        ]
+                    "CAACAgIAAxkBAAESUSZox-L90fVDYv4bOqPk-mP62ZOW4QACUAADWbv8JRx2zrNDfceoNgQ",
+                    "CAACAgIAAxkBAAESUShox-MDs3-OpdYr2-2Y9IQSI1s5oAACRgEAAlKJkSOZmXOICv8ipzYE",
+                    "CAACAgIAAxkBAAESUSxox-MIM3eqTY-1LrBtPU00BfhpOQACJAEAAjDUnRGjRHcouiC8HjYE",
+                    "CAACAgIAAxkBAAESUThox-V5rgUvKlvxkGYqDD4M_-s1jQAC2AsAAlgPmEo0-Pr1vnFYrzYE"
+                ]
 
         default_config = {
             "accounts": [],
@@ -70,6 +64,10 @@ class TelegramCommenter:
                 "enabled": True,
                 "model": "gpt-4o-mini",
                 "max_length": 150
+            },
+            "emohi_message_settings":{
+                "enabled": True,
+                "probability": 0.2
             }
         }
         
@@ -88,6 +86,16 @@ class TelegramCommenter:
                             if key not in merged_config["sticker_settings"]:
                                 merged_config["sticker_settings"][key] = value
                     return merged_config
+                    if "emoji_message_settings" not in merged_config:
+                        merged_config["emoji_message_settings"] = {
+                            "enabled": True,
+                            "probability": 0.2
+                        }
+                    else:
+                        if "enabled" not in merged_config["emoji_message_settings"]:
+                            merged_config["emoji_message_settings"]["enabled"] = True
+                        if "probability" not in merged_config["emoji_message_settings"]:
+                            merged_config["emoji_message_settings"]["probability"] = 0.2
             except Exception as e:
                 logger.warning(f"Помилка завантаження конфігурації: {e}, використовуємо стандартну")
         
@@ -182,76 +190,66 @@ class TelegramCommenter:
         except Exception as e:
             logger.debug(f"Помилка запиту GPT: {e}")
             return ""
-    
+
+    def get_random_emoji_message(self) -> str:
+        crypto_emojis = ["🔥", "💎", "🚀", "⚡", "🌙", "💯", "👑", "⭐", "🎯", "💪", "💰", "📈", "🤑", "⚡", "🔥💎", "🚀🌙", "💎🚀", "🔥💯", "💪⚡", "📈💰"]
+        return random.choice(crypto_emojis)
+
+
+
+
     async def generate_comment(self, post_text: str, style: str = "neutral", lang: str = "uk") -> str:
+
+        emoji_settings = self.config.get("emoji_message_settings", {"enabled": True, "probability": 0.2})
+        
+        if emoji_settings.get("enabled", True) and random.random() < emoji_settings.get("probability", 0.2):
+            return self.get_random_emoji_message()
+        
+
         if not self.config["ai_settings"]["enabled"]:
             return self.get_fallback_comment(style, lang)
         
         post_topic = self.analyze_post_topic(post_text, lang)
         
-        live_additions = {
-            "uk": [
-                "Використовуй сленг: четко, о як, зашибись, бро, го, щас, движуха, в деле, кайф, огонь",
-                "Будь живим як в чаті з друзями. Коротко і по справі",
-                "Стиль молодіжний, без формальності. Можна матюки замінити на м'які варіанти"
-            ],
-            "ru": [
-                "Используй сленг: четко, о как, зашибись, бро, го, щас, движуха, в деле, кайф, огонь", 
-                "Будь живым как в чате с друзьями. Коротко и по делу",
-                "Стиль молодежный, без формальности. Можно маты заменить на мягкие варианты"
-            ],
-            "en": [
-                "Use crypto slang: LFG, HODL, moon, FOMO, based, chad, YOLO, WAGMI, bullish, rekt",
-                "Be alive like chatting with friends. Short and direct",
-                "Youth style, no formality. Crypto community vibes"
-            ]
-        }
-        
-        topic_crypto_terms = self.get_topic_crypto_terms(post_topic, lang)
-        
         lang_prompts = {
             "uk": {
-                "short": f"Напиши короткий коментар (1-3 слова) українською ПРО ТЕМУ: {post_topic}. Живий сленг як четко, о як, зашибись, го, кайф. Пост: {post_text[:100]}. Відповідь має СТОСУВАТИСЯ теми поста. Тільки текст.",
-                "long": f"Напиши живий коментар (1-2 речення) українською ПРО: {post_topic}. Стиль чату з друзями: бро, движуха, в деле, щас. Використай релевантні крипто-терміни для цієї теми. Пост: {post_text[:200]}. ОБОВ'ЯЗКОВО зв'яжи з темою поста. Тільки текст.",
-                "emotional": f"Напиши емоційний коментар українською з емодзі ПРО: {post_topic}. Стиль: огонь, зашибись, кайф! + релевантні крипто терміни. Пост: {post_text[:150]}. Коментар має відображати емоцію щодо конкретної теми. Тільки текст.",
-                "neutral": f"Напиши коментар українською ПРО ТЕМУ: {post_topic}. Живий стиль + релевантні терміни для цієї теми. Коротко як в чаті але по суті поста. Пост: {post_text[:200]}. Тільки текст.",
-                "question": f"Задай коротке питання українською ПРО: {post_topic}. Стиль чату: че там, як справи + терміни з цієї теми. Пост: {post_text[:150]}. Питання має стосуватися конкретної теми поста. Тільки питання.",
-                "personal": f"Напиши особистий коментар українською ПРО: {post_topic}. Стиль: сам пробував, був досвід + сленг з цієї теми. Пост: {post_text[:200]}. Розкажи свій досвід з цієї конкретної теми. Тільки текст."
+                "short": f"Короткий коментар (максимум 3 слова) українською ПРО: {post_topic}. Сленг: четко, о як, го, кайф. Текст поста: {post_text[:80]}. ТІЛЬКИ ТЕКСТ БЕЗ ЛАПОК.",
+                "long": f"Коментар (максимум 40 символів) українською ПРО: {post_topic}. Стиль чату: бро, в деле. Текст: {post_text[:100]}. ТІЛЬКИ ТЕКСТ БЕЗ ЛАПОК.",
+                "emotional": f"Емоційний коментар (максимум 35 символів) українською + емодзі ПРО: {post_topic}. Стиль: огонь, кайф! Текст: {post_text[:80]}. ТІЛЬКИ ТЕКСТ БЕЗ ЛАПОК.",
+                "neutral": f"Коментар (максимум 30 символів) українською ПРО: {post_topic}. Живо але коротко. Текст: {post_text[:100]}. ТІЛЬКИ ТЕКСТ БЕЗ ЛАПОК.",
+                "question": f"Коротке питання (максимум 25 символів) українською ПРО: {post_topic}. Стиль: че там, як справи. Текст: {post_text[:80]}. ТІЛЬКИ ПИТАННЯ БЕЗ ЛАПОК.",
+                "personal": f"Особистий коментар (максимум 35 символів) українською ПРО: {post_topic}. Стиль: сам пробував, був досвід. Текст: {post_text[:100]}. ТІЛЬКИ ТЕКСТ БЕЗ ЛАПОК."
             },
             "ru": {
-                "short": f"Напиши короткий коммент (1-3 слова) на русском ПРО ТЕМУ: {post_topic}. Живой сленг как четко, о как, зашибись, го, кайф. Пост: {post_text[:100]}. Ответ должен КАСАТЬСЯ темы поста. Только текст.",
-                "long": f"Напиши живой коммент (1-2 предложения) на русском ПРО: {post_topic}. Стиль чата с друзьями: бро, движуха, в деле, щас. Используй релевантные крипто-термины для этой темы. Пост: {post_text[:200]}. ОБЯЗАТЕЛЬНО свяжи с темой поста. Только текст.",
-                "emotional": f"Напиши эмоциональный коммент на русском с эмодзи ПРО: {post_topic}. Стиль: огонь, зашибись, кайф! + релевантные крипто термины. Пост: {post_text[:150]}. Коммент должен отражать эмоцию по конкретной теме. Только текст.",
-                "neutral": f"Напиши коммент на русском ПРО ТЕМУ: {post_topic}. Живой стиль + релевантные термины для этой темы. Коротко как в чате но по сути поста. Пост: {post_text[:200]}. Только текст.",
-                "question": f"Задай короткий вопрос на русском ПРО: {post_topic}. Стиль чата: че там, как дела + термины из этой темы. Пост: {post_text[:150]}. Вопрос должен касаться конкретной темы поста. Только вопрос.",
-                "personal": f"Напиши личный коммент на русском ПРО: {post_topic}. Стиль: сам пробовал, был опыт + сленг из этой темы. Пост: {post_text[:200]}. Расскажи свой опыт с этой конкретной темой. Только текст."
+                "short": f"Короткий коммент (максимум 3 слова) на русском ПРО: {post_topic}. Сленг: четко, о как, го, кайф. Текст поста: {post_text[:80]}. ТОЛЬКО ТЕКСТ БЕЗ КАВЫЧЕК.",
+                "long": f"Коммент (максимум 40 символов) на русском ПРО: {post_topic}. Стиль чата: бро, в деле. Текст: {post_text[:100]}. ТОЛЬКО ТЕКСТ БЕЗ КАВЫЧЕК.",
+                "emotional": f"Эмоциональный коммент (максимум 35 символов) на русском + эмодзи ПРО: {post_topic}. Стиль: огонь, кайф! Текст: {post_text[:80]}. ТОЛЬКО ТЕКСТ БЕЗ КАВЫЧЕК.",
+                "neutral": f"Коммент (максимум 30 символов) на русском ПРО: {post_topic}. Живо но коротко. Текст: {post_text[:100]}. ТОЛЬКО ТЕКСТ БЕЗ КАВЫЧЕК.",
+                "question": f"Короткий вопрос (максимум 25 символов) на русском ПРО: {post_topic}. Стиль: че там, как дела. Текст: {post_text[:80]}. ТОЛЬКО ВОПРОС БЕЗ КАВЫЧЕК.",
+                "personal": f"Личный коммент (максимум 35 символов) на русском ПРО: {post_topic}. Стиль: сам пробовал, был опыт. Текст: {post_text[:100]}. ТОЛЬКО ТЕКСТ БЕЗ КАВЫЧЕК."
             },
             "en": {
-                "short": f"Write short comment (1-3 words) in English ABOUT: {post_topic}. Live slang like LFG, based, chad, YOLO. Post: {post_text[:100]}. Response must RELATE to post topic. Text only.",
-                "long": f"Write live comment (1-2 sentences) in English ABOUT: {post_topic}. Chat style with friends: bro, movement, let's go. Add relevant crypto slang for this topic. Post: {post_text[:200]}. MUST connect to post topic. Text only.",  
-                "emotional": f"Write emotional comment in English with emoji ABOUT: {post_topic}. Style: fire, awesome, sick! + relevant crypto slang. Post: {post_text[:150]}. Comment should reflect emotion about specific topic. Text only.",
-                "neutral": f"Write comment in English ABOUT TOPIC: {post_topic}. Live style + relevant terms for this topic. Short like in chat but on point about post. Post: {post_text[:200]}. Text only.",
-                "question": f"Ask short question in English ABOUT: {post_topic}. Chat style: what's up, how's it + terms from this topic. Post: {post_text[:150]}. Question must relate to specific post topic. Question only.",
-                "personal": f"Write personal comment in English ABOUT: {post_topic}. Style: tried it myself, had experience + slang from this topic. Post: {post_text[:200]}. Share your experience with this specific topic. Text only."
+                "short": f"Short comment (max 3 words) in English ABOUT: {post_topic}. Slang: LFG, based, YOLO. Post text: {post_text[:80]}. TEXT ONLY NO QUOTES.",
+                "long": f"Comment (max 40 chars) in English ABOUT: {post_topic}. Chat style: bro, let's go. Text: {post_text[:100]}. TEXT ONLY NO QUOTES.",
+                "emotional": f"Emotional comment (max 35 chars) in English + emoji ABOUT: {post_topic}. Style: fire, sick! Text: {post_text[:80]}. TEXT ONLY NO QUOTES.",
+                "neutral": f"Comment (max 30 chars) in English ABOUT: {post_topic}. Live but short. Text: {post_text[:100]}. TEXT ONLY NO QUOTES.",
+                "question": f"Short question (max 25 chars) in English ABOUT: {post_topic}. Style: what's up, how's it. Text: {post_text[:80]}. QUESTION ONLY NO QUOTES.",
+                "personal": f"Personal comment (max 35 chars) in English ABOUT: {post_topic}. Style: tried myself, had experience. Text: {post_text[:100]}. TEXT ONLY NO QUOTES."
             }
         }
         
         base_prompt = lang_prompts.get(lang, lang_prompts["uk"]).get(style, lang_prompts["uk"]["neutral"])
         
-        if random.random() < 0.6:
-            live_addition = random.choice(live_additions.get(lang, live_additions["uk"]))
-            full_prompt = f"{base_prompt} {live_addition}"
-        else:
-            topic_terms = ', '.join(topic_crypto_terms[:5])
-            full_prompt = f"{base_prompt} Використай терміни: {topic_terms}"
-        
-        comment = await self.ask_gpt4free(full_prompt)
+        comment = await self.ask_gpt4free(base_prompt)
         if not comment:
             return self.get_fallback_comment(style, lang, post_topic)
         
-        comment = comment.strip().strip('"').strip("'")
+        comment = comment.strip().strip('"').strip("'").strip('«').strip('»')
         
-        return comment[:self.config["ai_settings"]["max_length"]]
+        if len(comment) > 60:
+            comment = comment[:57] + "..."
+            
+        return comment
 
     def analyze_post_topic(self, post_text: str, lang: str) -> str:
         post_lower = post_text.lower()
@@ -334,236 +332,106 @@ class TelegramCommenter:
         ])
 
     def get_fallback_comment(self, style: str, lang: str, topic: str = "general") -> str:
-        topic_comments = {
-            "bitcoin": {
+            # Спеціальні коментарі для криптотем
+            topic_comments = {
+                "bitcoin": {
+                    "uk": {
+                        "short": ["HODL!", "BTC 🚀", "Сатоші!", "₿", "До moon!", "Дякую бро чотко!", "Раніше всіх новини виходять"],
+                        "long": ["BTC топ! 💎", "Digital gold!", "HODL до lambo!", "Сатоші знав!", "₿ майбутнє!", "Дякую за інфу бро!", "Раніше всіх дізнаємося"],
+                        "question": ["21М cap реальний?", "Халвінг коли точно?", "Bull run почався?", "Коли $100к?", "Що по BTC думаєте?"]
+                    },
+                    "ru": {
+                        "short": ["HODL!", "BTC 🚀", "Сатоши!", "₿", "На луну!", "Спасибо бро четко!", "Раньше всех новости выходят"],
+                        "long": ["BTC топ! 💎", "Цифровое золото!", "HODL до lambo!", "Сатоши знал!", "₿ будущее!", "Спасибо за инфу бро!", "Раньше всех узнаем"],
+                        "question": ["21М кап реальный?", "Халвинг когда точно?", "Bull run начался?", "Когда $100к?", "Что по BTC думаете?"]
+                    }
+                },
+                "ethereum": {
+                    "uk": {
+                        "short": ["ETH!", "Виталік 👑", "Web3!", "⚡", "Дякую чотко!"],
+                        "long": ["ETH топ! 🌐", "Smart contracts!", "Gas дорого але ок", "DApps майбутнє!", "Раніше всіх дізнаємося"],
+                        "question": ["Gas коли дешевше?", "Шардинг коли?", "ETH 2.0 готовий?", "Що по DeFi думаєте?"]
+                    }
+                }
+            }
+            
+            if topic in topic_comments and lang in topic_comments[topic] and style in topic_comments[topic][lang]:
+                return random.choice(topic_comments[topic][lang][style])
+            
+            comments = {
                 "uk": {
-                    "short": ["HODL!", "BTC до moon!", "Сатоши!", "Digital gold!", "₿"],
-                    "long": ["BTC - це майбутнє, бро! HODL до lambo 🚗", "Сатоши знав що робив. Цифрове золото назавжди!", "Lightning Network топ! Швидко і дешево"],
-                    "question": ["21 мільйон і все? Дефіцит топ чи що?", "Халвінг коли? Bull run підготували?"]
+                    "short": ["Четко!", "О як!", "Го!", "Кайф!", "Огонь!", "Топ!", "Бро!", "LFG!", "💎", "🚀", "Дякую бро чотко!", "Прикольно", "Раніше всіх новини виходят"],
+                    "long": ["Четко, бро! 💎", "О як топ!", "Го разом! 🚀", "Движуха!", "В деле!", "Кайф просто!", "Огонь! 🔥", "Дякую за інфу бро!", "Раніше всіх дізнаємося!", "Прикольно, дякую!"],
+                    "emotional": ["Вау! 🔥", "Зашибись! 🚀", "Четко! 💎", "Жесть! 🌙", "Огонь! ⚡", "Кайф! 🎯", "Дякую бро чотко! 💯"],
+                    "neutral": ["Цікаво", "Корисно", "Актуально", "DYOR", "Ок", "Норм", "Думки?", "Дякую за інфу", "Прикольно"],
+                    "question": ["Че там?", "Як думаєте?", "Реально?", "FOMO чи ні?", "Топ?", "Коли pump?", "Що по ціні?", "Bull run почався?", "Коли moon?", "Де купувати краще?", "Скільки тримати?", "Яка ціль?"],
+                    "personal": ["Був досвід", "Сам пробував", "HODL", "Згоден", "Моя думка +", "FOMO вдарив", "Дякую бро", "Раніше всіх знаю"]
+                },
+                "ru": {
+                    "short": ["Четко!", "О как!", "Го!", "Кайф!", "Огонь!", "Топ!", "Бро!", "LFG!", "💎", "🚀", "Спасибо бро четко!", "Прикольно", "Раньше всех новости выходят"],
+                    "long": ["Четко, бро! 💎", "О как топ!", "Го вместе! 🚀", "Движуха!", "В деле!", "Кайф просто!", "Огонь! 🔥", "Спасибо за инфу бро!", "Раньше всех узнаем!", "Прикольно, спасибо!"],
+                    "emotional": ["Вау! 🔥", "Зашибись! 🚀", "Четко! 💎", "Жесть! 🌙", "Огонь! ⚡", "Кайф! 🎯", "Спасибо бро четко! 💯"],
+                    "neutral": ["Интересно", "Полезно", "Актуально", "DYOR", "Ок", "Норм", "Мысли?", "Спасибо за инфу", "Прикольно"],
+                    "question": ["Че там?", "Как думаете?", "Реально?", "FOMO или нет?", "Топ?", "Когда pump?", "Что по цене?", "Bull run начался?", "Когда на луну?", "Где лучше покупать?", "Сколько держать?", "Какая цель?"],
+                    "personal": ["Был опыт", "Сам пробовал", "HODL", "Согласен", "Мое мнение +", "FOMO ударил", "Спасибо бро", "Раньше всех знаю"]
                 },
                 "en": {
-                    "short": ["HODL!", "BTC moon!", "Satoshi!", "Digital gold!", "₿"],
-                    "long": ["BTC is the future, bro! HODL to lambo 🚗", "Satoshi knew what's up. Digital gold forever!", "Lightning Network rocks! Fast and cheap"],
-                    "question": ["21 million cap? Scarcity bullish or what?", "Halving when? Bull run prepared?"]
-                }
-            },
-            "ethereum": {
-                "uk": {
-                    "short": ["ETH!", "Vitalik top!", "Web3!", "Smart contracts!"],
-                    "long": ["ETH екосистема неймовірна! DApps майбутнє 🌐", "Gas fees жесть, але технологія космос!", "Smart contracts революція справжня"],
-                    "question": ["Gas fees коли нормальні? Layer 2 рятує?", "Шардинг коли? Скейлинг потрібний"]
-                }
-            },
-            "defi": {
-                "uk": {
-                    "short": ["DeFi!", "Yield!", "APY космос!", "No banks!"],
-                    "long": ["DeFi революція! Банки не потрібні більше 🏦", "Yield farming ризикований але прибутковий", "Liquidity mining топова стратегія"],
-                    "question": ["Impermanent loss великий? Ризик варто?", "TVL зростає? Протокол надійний?"]
+                    "short": ["LFG!", "HODL!", "Moon!", "Based!", "Chad!", "YOLO!", "Bullish!", "💎", "🚀", "Thanks bro!", "Cool", "First to know news"],
+                    "long": ["LFG! 🚀", "HODL strong! 💎", "Bullish AF!", "Based take!", "Chad move!", "YOLO time!", "Moon! 🌙", "Thanks for info bro!", "First to know!", "Cool, thanks!"],
+                    "emotional": ["Holy! 🔥", "LFG! 🚀", "Based! 💎", "Rekt! 🌙", "Fire! ⚡", "FOMO! 🎯", "Thanks bro! 💯"],
+                    "neutral": ["Interesting", "Useful", "Relevant", "DYOR", "Ok", "Thoughts?", "Thanks for info", "Cool"],
+                    "question": ["Real gem?", "What think?", "Bullish?", "FOMO trap?", "Moon?", "When pump?", "Price target?", "Bull run started?", "When lambo?", "Where to buy?", "How long hold?", "What's the goal?"],
+                    "personal": ["Been there", "Tried it", "HODL", "Agree", "My take +", "FOMO hit", "Thanks bro", "First to know"]
                 }
             }
-        }
-        
-        if topic in topic_comments:
-            topic_data = topic_comments[topic].get(lang, topic_comments[topic].get("en", {}))
-            if style in topic_data:
-                return random.choice(topic_data[style])
-        
-        comments = {
-            "uk": {
-                "short": [
-                    "Четко!", "О як!", "Зашибись!", "Бро!", "Го!", "Щас!", 
-                    "HODL!", "Moon!", "LFG!", "Че там?", "Погнали!", 
-                    "Движуха!", "На весь сайз!", "В деле!", "Кайф!", 
-                    "Огонь!", "Топчик!", "Круто!", "Жесть!", "Базара нет!"
-                ],
-                "long": [
-                    "Четко подано, бро! HODL стратегія топ 💎",
-                    "О як розповів! На весь сайз залітаю в цю тему",
-                    "Зашибись аналіз! Че там за движуха з китами?", 
-                    "Погнали, я в деле! FOMO рівень максимум 🚀",
-                    "Щас буде памп? Whale alert чи що?",
-                    "Бро, це gem! DYOR завжди, але виглядає bullish",
-                    "Движуха серйозна! Diamond hands тримають позиції",
-                    "На весь сайз заходжу! APY космічний просто",
-                    "Го разом farmити! Liquidity pool виглядає сочно"
-                ],
-                "emotional": [
-                    "Вау, зашибись! 🔥 TO THE MOON baby!",
-                    "О як! 🚀 Це moonshot чи що?!",
-                    "Четко! 💎 Diamond hands forever!",
-                    "Жесть яка! 🌙 HODL до останнього!",
-                    "Огонь! ⚡ Whale move такий потужний!",
-                    "Бро, це космос! 🪐 ATH буде скоро!",
-                    "Кайф! 🎯 Bullish настрій зашкалює!"
-                ],
-                "neutral": [
-                    "Цікава інфа. BTC тренд як?",
-                    "Корисно. ETH staking оновлення є?",
-                    "Актуально. DeFi протокол надійний?",
-                    "DYOR зробив, виглядає ок",
-                    "Che там з gas fees? Нормально?",
-                    "Tokenomics як? Supply скільки?",
-                    "Liquidity достатня чи тонко?",
-                    "Chart що показує? RSI рівні?",
-                    "Market cap нормальний? Не overvalued?"
-                ],
-                "question": [
-                    "Che там за hype? FOMO чи реальний gem?",
-                    "Whale movements є? Великі transferи бачили?",
-                    "APY реальний чи unsustainable? Як думаєте?",
-                    "Rugpull ризик є? Contract audit проходив?",
-                    "Staking pool безпечний? Lock period який?",
-                    "IDO коли? Whitelist ще можна потрапити?",
-                    "Bear trap чи справжній dump? Технічний аналіз?",
-                    "Cross-chain bridge працює стабільно?",
-                    "DAO governance активна? Community strong?"
-                ],
-                "personal": [
-                    "Був схожий досвід. HODLив ETH з 2020",
-                    "Згоден на всі 100! FOMO вдарив серйозно",
-                    "Моя думка: DYOR + diamond hands = profit",
-                    "Сам farmлю вже пів року. APY падає але ок",
-                    "В цю тему заходив раніше. Whale alerts спрацювали",
-                    "Paper hands був колись, тепер тільки HODL",
-                    "Bag holder цього токена. Чекаю moon shot",
-                    "DCA стратегія працює. Buy the dip завжди",
-                    "NFT flip досвід є. Blue chip тільки беру"
-                ]
-            },
-            "ru": {
-                "short": [
-                    "Четко!", "О как!", "Зашибись!", "Бро!", "Го!", "Щас!", 
-                    "HODL!", "Moon!", "LFG!", "Че там?", "Погнали!", 
-                    "Движуха!", "На весь сайз!", "В деле!", "Кайф!", 
-                    "Огонь!", "Топчик!", "Круто!", "Жесть!", "Базара нет!"
-                ],
-                "long": [
-                    "Четко подано, бро! HODL стратегия топ 💎",
-                    "О как рассказал! На весь сайз залетаю в эту тему",
-                    "Зашибись анализ! Че там за движуха с китами?", 
-                    "Погнали, я в деле! FOMO уровень максимум 🚀",
-                    "Щас будет памп? Whale alert или что?",
-                    "Бро, это gem! DYOR всегда, но выглядит bullish",
-                    "Движуха серьезная! Diamond hands держат позиции",
-                    "На весь сайз захожу! APY космический просто",
-                    "Го вместе фармить! Liquidity pool выглядит сочно"
-                ],
-                "emotional": [
-                    "Вау, зашибись! 🔥 TO THE MOON baby!",
-                    "О как! 🚀 Это moonshot или что?!",
-                    "Четко! 💎 Diamond hands forever!",
-                    "Жесть какая! 🌙 HODL до последнего!",
-                    "Огонь! ⚡ Whale move такой мощный!",
-                    "Бро, это космос! 🪐 ATH будет скоро!",
-                    "Кайф! 🎯 Bullish настрой зашкаливает!"
-                ],
-                "neutral": [
-                    "Интересная инфа. BTC тренд как?",
-                    "Полезно. ETH staking обновления есть?",
-                    "Актуально. DeFi протокол надежный?",
-                    "DYOR сделал, выглядит ок",
-                    "Че там с gas fees? Нормально?",
-                    "Tokenomics как? Supply сколько?",
-                    "Liquidity достаточная или тонко?",
-                    "Chart что показывает? RSI уровни?",
-                    "Market cap нормальный? Не overvalued?"
-                ],
-                "question": [
-                    "Че там за hype? FOMO или реальный gem?",
-                    "Whale movements есть? Большие transferы видели?",
-                    "APY реальный или unsustainable? Как думаете?",
-                    "Rugpull риск есть? Contract audit проходил?",
-                    "Staking pool безопасный? Lock period какой?",
-                    "IDO когда? Whitelist еще можно попасть?",
-                    "Bear trap или настоящий dump? Технический анализ?",
-                    "Cross-chain bridge работает стабильно?",
-                    "DAO governance активная? Community strong?"
-                ],
-                "personal": [
-                    "Был похожий опыт. HODLил ETH с 2020",
-                    "Согласен на все 100! FOMO ударил серьезно",
-                    "Мое мнение: DYOR + diamond hands = profit",
-                    "Сам фармлю уже полгода. APY падает но ок",
-                    "В эту тему заходил раньше. Whale alerts сработали",
-                    "Paper hands был когда-то, теперь только HODL",
-                    "Bag holder этого токена. Жду moon shot",
-                    "DCA стратегия работает. Buy the dip всегда",
-                    "NFT flip опыт есть. Blue chip только беру"
-                ]
-            },
-            "en": {
-                "short": [
-                    "LFG!", "HODL!", "Moon!", "Bullish!", "Based!", "Chad move!",
-                    "Diamond hands!", "YOLO!", "BTFD!", "Rekt!", "FOMO!", "Shill!",
-                    "Whale alert!", "Pump it!", "To the moon!", "Stonks!", "NGMI!", "WAGMI!"
-                ],
-                "long": [
-                    "LFG! This looks like a moonshot opportunity 🚀",
-                    "HODL strategy looking solid. Diamond hands only 💎",
-                    "Bullish setup here! Whale movements confirmed",
-                    "FOMO kicking in hard. DYOR but looks promising",
-                    "Chad analysis! APY numbers are astronomical",
-                    "Pump incoming? Chart patterns screaming bullish",
-                    "DeFi farming opportunity? Liquidity looks thick",
-                    "YOLO mode activated! Risk/reward ratio insane",
-                    "Based take! Community sentiment through the roof"
-                ],
-                "emotional": [
-                    "Holy shit! 🔥 TO THE MOON we go!",
-                    "WAGMI! 🚀 This is the moonshot we needed!",
-                    "Diamond hands forever! 💎 Never selling!",
-                    "LFG! 🌙 HODL until Valhalla!",
-                    "Bullish AF! ⚡ Whale moves confirmed!",
-                    "Based! 🪐 ATH incoming soon!",
-                    "FOMO! 🎯 Bull run starting now!"
-                ],
-                "neutral": [
-                    "Interesting data. BTC correlation?",
-                    "Useful info. ETH merge impact?",
-                    "Relevant. Protocol security audit?",
-                    "DYOR completed, looks decent",
-                    "Gas fees situation? Manageable?",
-                    "Tokenomics solid? Max supply?",
-                    "Liquidity sufficient? Slippage low?",
-                    "Technical analysis? Support levels?",
-                    "Market cap reasonable? Not overvalued?"
-                ],
-                "question": [
-                    "Real gem or just hype? FOMO trap?",
-                    "Whale activity confirmed? Large transfers?",
-                    "Sustainable APY or too good to be true?",
-                    "Rug risk assessment? Contract verified?",
-                    "Staking rewards legit? Lock period?",
-                    "IDO access available? Whitelist open?",
-                    "Bear trap or genuine correction? TA?",
-                    "Cross-chain functionality working?",
-                    "DAO participation active? Strong community?"
-                ],
-                "personal": [
-                    "Been there! HODLed ETH since 2020",
-                    "100% agree! FOMO hit me hard too",
-                    "My take: DYOR + diamond hands = win",
-                    "Farming this for months. APY dropping but ok",
-                    "Played this before. Whale alerts worked",
-                    "Was paper hands once, now HODL only",
-                    "Bag holding this token. Waiting moon shot",
-                    "DCA strategy works. Always buy dips",
-                    "NFT flipping experience. Blue chips only"
-                ]
-            }
-        }
 
-        if style == "short":
-            if random.random() < 0.7:
-                live_phrases = {
-                    "uk": ["Четко!", "О як!", "Зашибись!", "Го!", "В деле!", "Движуха!", "Кайф!", "Огонь!"],
-                    "ru": ["Четко!", "О как!", "Зашибись!", "Го!", "В деле!", "Движуха!", "Кайф!", "Огонь!"],
-                    "en": ["LFG!", "Based!", "Chad move!", "YOLO!", "Moon!", "Bullish!", "WAGMI!"]
-                }
-                return random.choice(live_phrases.get(lang, live_phrases["en"]))
+            return random.choice(comments.get(lang, comments["uk"]).get(style, comments["uk"]["neutral"]))
+
+    def get_random_sticker(self) -> str:
+        """Повертає випадковий стикер ID"""
+        sticker_settings = self.config.get("sticker_settings", {})
         
-        return random.choice(comments.get(lang, comments["uk"]).get(style, comments["uk"]["neutral"]))
-    
+        all_stickers = []
+        if sticker_settings.get("use_standard_stickers", True):
+            all_stickers.extend(sticker_settings.get("standard_stickers", []))
+        
+        all_stickers.extend(sticker_settings.get("custom_stickers", []))
+        
+        return random.choice(all_stickers) if all_stickers else None
+
+    async def send_sticker_to_discussion(self, client: TelegramClient, channel_entity, message_id: int, 
+                                        sticker_id: str, account_phone: str, log_callback=None) -> bool:
+        """Надсилає стикер в групу дискусії каналу"""
+        try:
+            discussion = await self.get_discussion_message(client, channel_entity, message_id)
+            
+            if not discussion or not hasattr(discussion, 'messages') or not discussion.messages:
+                if log_callback:
+                    log_callback(f"[{account_phone}] Немає групи дискусії для стикера")
+                return False
+            
+            discussion_chat = discussion.chats[0] if discussion.chats else None
+            if not discussion_chat:
+                if log_callback:
+                    log_callback(f"[{account_phone}] Групу дискусії для стикера не знайдено")
+                return False
+            
+            discussion_message = discussion.messages[0]
+            discussion_message_id = discussion_message.id
+            
+            await client.send_file(
+                discussion_chat,
+                sticker_id,
+                reply_to=discussion_message_id
+            )
+            
+            if log_callback:
+                log_callback(f"[{account_phone}] Стикер надіслано!")
+            return True
+        except Exception as e:
+            if log_callback:
+                log_callback(f"[{account_phone}] Не вдалося надіслати стикер: {e}")
+            return False
     def get_weighted_style(self):
         styles = self.config["comment_settings"]["styles"]
         weights = [3 if s == "short" else 1 if s == "long" else 2 for s in styles]
@@ -931,8 +799,9 @@ class TelegramCommenter:
                         self.log_activity(account_phone, channel_username, "REACTION", message.id)
                 
                 if random.random() < self.config["comment_settings"]["comment_probability"]:
+                    sticker_prob = self.config["comment_settings"].get("sticker_probability", 0.1)
                     sticker_settings = self.config.get("sticker_settings", {})
-                    if sticker_settings.get("enabled", False) and random.random() < sticker_settings.get("probability", 0.15):
+                    if sticker_settings.get("enabled", False) and random.random() < sticker_prob:
                         sticker_id = self.get_random_sticker()
                         if sticker_id:
                             await asyncio.sleep(random.uniform(1, 5))
