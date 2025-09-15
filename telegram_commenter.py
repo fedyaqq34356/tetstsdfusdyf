@@ -32,13 +32,6 @@ class TelegramCommenter:
         self.channel_entities = {}
 
     def load_config(self) -> dict:
-        STANDARD_STICKERS = [
-                    "CAACAgIAAxkBAAESUSZox-L90fVDYv4bOqPk-mP62ZOW4QACUAADWbv8JRx2zrNDfceoNgQ",
-                    "CAACAgIAAxkBAAESUShox-MDs3-OpdYr2-2Y9IQSI1s5oAACRgEAAlKJkSOZmXOICv8ipzYE",
-                    "CAACAgIAAxkBAAESUSxox-MIM3eqTY-1LrBtPU00BfhpOQACJAEAAjDUnRGjRHcouiC8HjYE",
-                    "CAACAgIAAxkBAAESUThox-V5rgUvKlvxkGYqDD4M_-s1jQAC2AsAAlgPmEo0-Pr1vnFYrzYE"
-                ]
-
         default_config = {
             "accounts": [],
             "channels": [],
@@ -56,9 +49,6 @@ class TelegramCommenter:
             "sticker_settings": {
                 "enabled": True,
                 "probability": 0.15,
-                "use_standard_stickers": True,
-                "standard_stickers": STANDARD_STICKERS,
-                "custom_stickers": []
             },
             "ai_settings": {
                 "enabled": True,
@@ -419,19 +409,65 @@ class TelegramCommenter:
             discussion_message = discussion.messages[0]
             discussion_message_id = discussion_message.id
             
-            await client.send_file(
-                discussion_chat,
-                sticker_id,
-                reply_to=discussion_message_id
-            )
+            # Попробуем сначала получить стикер через его ID
+            try:
+                # Попытка получить стикер по file_id
+                sticker_file = await client.get_messages(sticker_id)
+                if sticker_file and hasattr(sticker_file, 'media'):
+                    await client.send_file(
+                        discussion_chat,
+                        sticker_file.media,
+                        reply_to=discussion_message_id
+                    )
+                else:
+                    # Если не получилось - пробуем напрямую
+                    await client.send_file(
+                        discussion_chat,
+                        sticker_id,
+                        reply_to=discussion_message_id
+                    )
+            except Exception as sticker_error:
+                if log_callback:
+                    log_callback(f"[{account_phone}] Стикер недоступен (возможно не установлен стикерпак): {sticker_error}")
+                # Вместо стикера отправляем эмодзи
+                emoji_alternatives = ["🔥", "💎", "🚀", "⚡", "🌙", "💯", "👑", "⭐"]
+                emoji = random.choice(emoji_alternatives)
+                
+                await client.send_message(
+                    discussion_chat,
+                    emoji,
+                    reply_to=discussion_message_id
+                )
+                
+                if log_callback:
+                    log_callback(f"[{account_phone}] Отправлен эмодзи вместо стикера: {emoji}")
+                return True
             
             if log_callback:
                 log_callback(f"[{account_phone}] Стикер надіслано!")
             return True
+            
         except Exception as e:
             if log_callback:
                 log_callback(f"[{account_phone}] Не вдалося надіслати стикер: {e}")
             return False
+
+    def get_random_sticker(self) -> str:
+        """Возвращает случайный стикер ID или None если стикеры недоступны"""
+        sticker_settings = self.config.get("sticker_settings", {})
+        
+        all_stickers = []
+        
+        # Сначала пробуем кастомные стикеры (они более вероятно доступны)
+        all_stickers.extend(sticker_settings.get("custom_stickers", []))
+        
+        # Потом стандартные (но они могут быть недоступны)
+        if sticker_settings.get("use_standard_stickers", True):
+            all_stickers.extend(sticker_settings.get("standard_stickers", []))
+        
+        return random.choice(all_stickers) if all_stickers else None
+
+
     def get_weighted_style(self):
         styles = self.config["comment_settings"]["styles"]
         weights = [3 if s == "short" else 1 if s == "long" else 2 for s in styles]
@@ -736,117 +772,127 @@ class TelegramCommenter:
             logger.debug(f"Тиха активність не вдалася: {e}")
     
     async def process_new_message(self, client: TelegramClient, event, account_phone: str, log_callback=None):
-            try:
-                message = event.message
-                if not message or isinstance(message, MessageService) or not message.text:
-                    if log_callback:
-                        log_callback(f"[{account_phone}] Пропуск невалідного повідомлення")
-                    return
-
-                chat = await event.get_chat()
-                if not isinstance(chat, Channel) or not chat.username:
-                    if log_callback:
-                        log_callback(f"[{account_phone}] Пропуск неканалу або відсутність імені користувача")
-                    return
-
-                channel_username = chat.username
-                channel_config = next(
-                    (ch for ch in self.config["channels"] 
-                    if ch["username"] == channel_username and ch["enabled"]),
-                    None
-                )
-                if not channel_config:
-                    if log_callback:
-                        log_callback(f"[{account_phone}] Канал {channel_username} не налаштовано")
-                    return
-
-                available_accounts = [
-                    phone for phone in self.clients.keys()
-                    if any(acc["phone"] == phone and acc["active"] for acc in self.config["accounts"])
-                ]
-                selected_accounts = self.get_random_accounts_for_channel(channel_username, available_accounts)
-
-                if account_phone not in selected_accounts:
-                    self.mark_post_processed(message.id, channel_username, account_phone)
-                    if log_callback:
-                        log_callback(f"[{account_phone}] Не вибрано для коментування")
-                    return
-
-                if self.is_post_processed(message.id, channel_username, account_phone):
-                    if log_callback:
-                        log_callback(f"[{account_phone}] Повідомлення {message.id} уже оброблено")
-                    return
-
+        try:
+            message = event.message
+            if not message or isinstance(message, MessageService) or not message.text:
                 if log_callback:
-                    log_callback(f"[{account_phone}] Обробка повідомлення {message.id} у @{channel_username}")
+                    log_callback(f"[{account_phone}] Пропуск невалідного повідомлення")
+                return
 
-                if random.random() < self.config["comment_settings"]["silent_activity_probability"]:
-                    await self.simulate_silent_activity(client, chat, account_phone)
-                    self.mark_post_processed(message.id, channel_username, account_phone)
-                    return
-
-                min_delay_sec = self.config["comment_settings"]["min_delay"] * 60
-                max_delay_sec = self.config["comment_settings"]["max_delay"] * 60
-                delay = random.randint(min_delay_sec, max_delay_sec)
-
+            chat = await event.get_chat()
+            if not isinstance(chat, Channel) or not chat.username:
                 if log_callback:
-                    log_callback(f"[{account_phone}] Заплановано для @{channel_username} через {delay//60} хв {delay%60} сек")
+                    log_callback(f"[{account_phone}] Пропуск неканалу або відсутність імені користувача")
+                return
 
-                await asyncio.sleep(delay)
+            channel_username = chat.username
+            channel_config = next(
+                (ch for ch in self.config["channels"] 
+                if ch["username"] == channel_username and ch["enabled"]),
+                None
+            )
+            if not channel_config:
+                if log_callback:
+                    log_callback(f"[{account_phone}] Канал {channel_username} не налаштовано")
+                return
 
-                if random.random() < self.config["comment_settings"]["like_probability"]:
-                    if await self.send_reaction(client, chat, message.id):
-                        self.log_activity(account_phone, channel_username, "REACTION", message.id)
-                
-                if random.random() < self.config["comment_settings"]["comment_probability"]:
-                    sticker_prob = self.config["comment_settings"].get("sticker_probability", 0.1)
-                    sticker_settings = self.config.get("sticker_settings", {})
-                    if sticker_settings.get("enabled", False) and random.random() < sticker_prob:
-                        sticker_id = self.get_random_sticker()
-                        if sticker_id:
-                            await asyncio.sleep(random.uniform(1, 5))
-                            try:
-                                if await self.send_sticker_to_discussion(
-                                    client, chat, message.id, sticker_id, account_phone, log_callback
-                                ):
-                                    self.log_activity(account_phone, channel_username, "STICKER", message.id, "sticker")
-                                    if log_callback:
-                                        log_callback(f"[{account_phone}] Стикер надіслано!")
-                            except FloodWaitError as e:
-                                if log_callback:
-                                    log_callback(f"[{account_phone}] FloodWait: {e.seconds} секунд")
-                                await asyncio.sleep(e.seconds)
-                            except Exception as e:
-                                if log_callback:
-                                    log_callback(f"[{account_phone}] Помилка стикера: {e}")
-                    else:
-                        style = self.get_weighted_style()
-                        lang = self.detect_language(message.text)
-                        comment_text = await self.generate_comment(message.text, style, lang)
+            available_accounts = [
+                phone for phone in self.clients.keys()
+                if any(acc["phone"] == phone and acc["active"] for acc in self.config["accounts"])
+            ]
+            selected_accounts = self.get_random_accounts_for_channel(channel_username, available_accounts)
 
-                        if comment_text:
-                            await asyncio.sleep(random.uniform(1, 5))
-                            try:
-                                if await self.send_comment_to_discussion(
-                                    client, chat, message.id, comment_text, account_phone, log_callback
-                                ):
-                                    self.log_activity(account_phone, channel_username, "COMMENT", message.id, comment_text)
-                                    if log_callback:
-                                        log_callback(f"[{account_phone}] Коментар надіслано: {comment_text[:50]}...")
-                            except FloodWaitError as e:
-                                if log_callback:
-                                    log_callback(f"[{account_phone}] FloodWait: {e.seconds} секунд")
-                                await asyncio.sleep(e.seconds)
-                            except Exception as e:
-                                if log_callback:
-                                    log_callback(f"[{account_phone}] Помилка коментаря: {e}")
-
+            if account_phone not in selected_accounts:
                 self.mark_post_processed(message.id, channel_username, account_phone)
-                
-            except Exception as e:
                 if log_callback:
-                    log_callback(f"[{account_phone}] Помилка обробки повідомлення: {e}")
-                logger.error(f"Помилка в process_new_message для {account_phone}: {e}")
+                    log_callback(f"[{account_phone}] Не вибрано для коментування")
+                return
+
+            if self.is_post_processed(message.id, channel_username, account_phone):
+                if log_callback:
+                    log_callback(f"[{account_phone}] Повідомлення {message.id} уже оброблено")
+                return
+
+            if log_callback:
+                log_callback(f"[{account_phone}] Обробка повідомлення {message.id} у @{channel_username}")
+
+            if random.random() < self.config["comment_settings"]["silent_activity_probability"]:
+                await self.simulate_silent_activity(client, chat, account_phone)
+                self.mark_post_processed(message.id, channel_username, account_phone)
+                return
+
+            min_delay_sec = self.config["comment_settings"]["min_delay"] * 60
+            max_delay_sec = self.config["comment_settings"]["max_delay"] * 60
+            delay = random.randint(min_delay_sec, max_delay_sec)
+
+            if log_callback:
+                log_callback(f"[{account_phone}] Заплановано для @{channel_username} через {delay//60} хв {delay%60} сек")
+
+            await asyncio.sleep(delay)
+
+            if random.random() < self.config["comment_settings"]["like_probability"]:
+                if await self.send_reaction(client, chat, message.id):
+                    self.log_activity(account_phone, channel_username, "REACTION", message.id)
+            
+            if random.random() < self.config["comment_settings"]["comment_probability"]:
+                sticker_prob = self.config["comment_settings"].get("sticker_probability", 0.1)
+                sticker_settings = self.config.get("sticker_settings", {})
+                
+                if sticker_settings.get("enabled", False) and random.random() < sticker_prob:
+                    # Используем безопасный подход - эмодзи вместо стикеров
+                    emoji_sticker = self.get_random_emoji_sticker()
+                    await asyncio.sleep(random.uniform(1, 5))
+                    
+                    try:
+                        discussion = await self.get_discussion_message(client, chat, message.id)
+                        if discussion and hasattr(discussion, 'messages') and discussion.messages:
+                            discussion_chat = discussion.chats[0] if discussion.chats else None
+                            if discussion_chat:
+                                discussion_message = discussion.messages[0]
+                                await client.send_message(
+                                    discussion_chat,
+                                    emoji_sticker,
+                                    reply_to=discussion_message.id
+                                )
+                                self.log_activity(account_phone, channel_username, "EMOJI_STICKER", message.id, emoji_sticker)
+                                if log_callback:
+                                    log_callback(f"[{account_phone}] Emoji-стикер надіслано: {emoji_sticker}")
+                    except FloodWaitError as e:
+                        if log_callback:
+                            log_callback(f"[{account_phone}] FloodWait: {e.seconds} секунд")
+                        await asyncio.sleep(e.seconds)
+                    except Exception as e:
+                        if log_callback:
+                            log_callback(f"[{account_phone}] Помилка emoji-стикера: {e}")
+                else:
+                    # Обычный текстовый комментарий
+                    style = self.get_weighted_style()
+                    lang = self.detect_language(message.text)
+                    comment_text = await self.generate_comment(message.text, style, lang)
+
+                    if comment_text:
+                        await asyncio.sleep(random.uniform(1, 5))
+                        try:
+                            if await self.send_comment_to_discussion(
+                                client, chat, message.id, comment_text, account_phone, log_callback
+                            ):
+                                self.log_activity(account_phone, channel_username, "COMMENT", message.id, comment_text)
+                                if log_callback:
+                                    log_callback(f"[{account_phone}] Коментар надіслано: {comment_text[:50]}...")
+                        except FloodWaitError as e:
+                            if log_callback:
+                                log_callback(f"[{account_phone}] FloodWait: {e.seconds} секунд")
+                            await asyncio.sleep(e.seconds)
+                        except Exception as e:
+                            if log_callback:
+                                log_callback(f"[{account_phone}] Помилка коментаря: {e}")
+
+            self.mark_post_processed(message.id, channel_username, account_phone)
+            
+        except Exception as e:
+            if log_callback:
+                log_callback(f"[{account_phone}] Помилка обробки повідомлення: {e}")
+            logger.error(f"Помилка в process_new_message для {account_phone}: {e}")
 
     def toggle_stickers(self, enabled: bool = None, probability: float = None) -> dict:
         if "sticker_settings" not in self.config:
